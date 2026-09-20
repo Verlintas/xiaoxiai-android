@@ -40,6 +40,8 @@ local.properties
 # 从项目网盘下载模型后，按 app/src/main/assets/README.md 放回对应目录即可编译运行。
 /app/src/main/assets/**
 !/app/src/main/assets/README.md
+/app/src/main/assets.zip
+/app/src/main/*.zip
 
 # ── 调试 / 性能分析产物 ──
 onnxruntime_profile__*.json
