@@ -53,12 +53,23 @@ txt / Word / PDF / 图片的离线识别与翻译，全程本地解析，适合�
 
 详细用法见 [`docs/操作手册.md`](docs/操作手册.md)。
 
-## 一、准备模型（必做）
+## 一、下载 APK 直接使用
 
-模型文件**不在仓库里**（总量约 4GB）。请先从网盘下载模型包，解压到 `app/src/main/assets/` 下：
+不想编译的话，直接下载预编译安装包即可（模型已内置，装完即可离线使用）：
 
-- 链接：https://pan.baidu.com/s/1o01wK3txnsmkr9UJQuaCAQ
-- 提取码：`aqp5`
+- 文件：`xiaoxi离线AI宝.apk`
+- 链接：https://pan.baidu.com/s/18Fc9oFpRzoySbjHCXCH8aA
+- 提取码：`a6bb`
+
+安装要求：Android 8.0（API 26）及以上、arm64 设备；安装时需在系统设置中允许「未知来源应用」安装。首次启动会把内置模型解包到应用目录，耗时数分钟且需要较多存储空间，建议在网络与电量充足时完成。
+
+## 二、准备模型（编译源码必做）
+
+模型文件**不在仓库里**（总量约 4GB）。下载 `assets.zip` 后解压，把里面的目录放到 `app/src/main/assets/` 下：
+
+- 文件：`assets.zip`
+- 链接：https://pan.baidu.com/s/1Zx1eVrAPA90UvKNPhYkzDw
+- 提取码：`yk75`
 
 ```
 asr/    语音识别    mt/     机器翻译    llm/    端侧大模型
@@ -68,7 +79,7 @@ tts/    语音合成    ocr/    文字识别    vad/    语音端点检测
 目录结构与注意事项见 [`app/src/main/assets/README.md`](app/src/main/assets/README.md)。
 没有模型也能编译安装，只是对应能力不可用。
 
-## 二、编译运行
+## 三、编译运行
 
 ```bash
 ./gradlew :app:assembleDebug     # 打调试包
@@ -79,7 +90,7 @@ tts/    语音合成    ocr/    文字识别    vad/    语音端点检测
 
 环境：JDK 11+，Android Studio 最新稳定版（AGP 8.13）。国内网络已配置阿里云 Maven 镜像。
 
-## 三、目录结构
+## 四、目录结构
 
 ```
 app/src/main/java/com/example/xiaoxiai/
@@ -95,7 +106,7 @@ app/src/main/java/com/example/xiaoxiai/
 └── ...                    VAD、音频 IO、分词器、文档解析等
 ```
 
-## 四、开源协议
+## 五、开源协议
 
 本项目代码采用 [Apache License 2.0](LICENSE) 授权，可自由使用、修改与二次分发（需保留协议声明与署名）。
 

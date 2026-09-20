@@ -3,8 +3,9 @@
 本目录下的模型文件**不在 Git 仓库中**（总量约 4GB，已在 `.gitignore` 排除）。
 请从项目发布的网盘下载模型包，解压后按下面的目录结构放回，再编译运行。
 
-**下载地址**：https://pan.baidu.com/s/1o01wK3txnsmkr9UJQuaCAQ
-**提取码**：`aqp5`
+- 文件：`assets.zip`
+- 下载地址：https://pan.baidu.com/s/1Zx1eVrAPA90UvKNPhYkzDw
+- 提取码：`yk75`
 
 ```
 app/src/main/assets/
