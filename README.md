@@ -7,7 +7,7 @@
 - 最低系统：Android 8.0（API 26），目标 / 编译 SDK：API 36
 - 推理：ONNX Runtime Android 1.26（主力）+ PyTorch Mobile Lite 2.1（辅助）+ OpenCV 4.9（扫描增强）
 
-## 内置智能体
+## 一、功能特性
 
 <p align="center">
   <img src="images/APP%E9%A6%96%E9%A1%B5.jpg" width="240" alt="APP 首页">
@@ -53,7 +53,7 @@ txt / Word / PDF / 图片的离线识别与翻译，全程本地解析，适合�
 
 详细用法见 [`docs/操作手册.md`](docs/操作手册.md)。
 
-## 一、下载 APK 直接使用
+## 二、下载 APK 直接使用
 
 不想编译的话，直接下载预编译安装包即可（模型已内置，装完即可离线使用）：
 
@@ -63,7 +63,7 @@ txt / Word / PDF / 图片的离线识别与翻译，全程本地解析，适合�
 
 安装要求：Android 8.0（API 26）及以上、arm64 设备；安装时需在系统设置中允许「未知来源应用」安装。首次启动会把内置模型解包到应用目录，耗时数分钟且需要较多存储空间，建议在网络与电量充足时完成。
 
-## 二、准备模型（编译源码必做）
+## 三、准备模型（编译源码必做）
 
 模型文件**不在仓库里**（总量约 4GB）。下载 `assets.zip` 后解压，把里面的目录放到 `app/src/main/assets/` 下：
 
@@ -79,7 +79,7 @@ tts/    语音合成    ocr/    文字识别    vad/    语音端点检测
 目录结构与注意事项见 [`app/src/main/assets/README.md`](app/src/main/assets/README.md)。
 没有模型也能编译安装，只是对应能力不可用。
 
-## 三、编译运行
+## 四、编译运行
 
 ```bash
 ./gradlew :app:assembleDebug     # 打调试包
@@ -90,7 +90,7 @@ tts/    语音合成    ocr/    文字识别    vad/    语音端点检测
 
 环境：JDK 11+，Android Studio 最新稳定版（AGP 8.13）。国内网络已配置阿里云 Maven 镜像。
 
-## 四、目录结构
+## 五、目录结构
 
 ```
 app/src/main/java/com/example/xiaoxiai/
@@ -106,9 +106,6 @@ app/src/main/java/com/example/xiaoxiai/
 └── ...                    VAD、音频 IO、分词器、文档解析等
 ```
 
-## 五、Star History
-
-
 ## 六、开源协议
 
 本项目代码采用 [Apache License 2.0](LICENSE) 授权，可自由使用、修改与二次分发（需保留协议声明与署名）。
@@ -116,7 +113,7 @@ app/src/main/java/com/example/xiaoxiai/
 > 提醒：若要上架应用市场，应用内的第三方模型与依赖（ONNX Runtime、PyTorch Mobile、OpenCV 等）
 > 各自遵循其上游许可，请一并遵守；国内上架还需自备软件著作权、App 备案与隐私政策等材料。
 
-## 六、Star History
+## 七、Star History
 
 如果这个项目对你有帮助，欢迎点个 Star ⭐
 
