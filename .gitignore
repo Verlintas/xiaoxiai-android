@@ -1,0 +1,45 @@
+# ── 构建产物 ──
+*.apk
+*.aab
+*.apks
+*.dex
+*.class
+bin/
+gen/
+out/
+build/
+app/build/
+.cxx/
+.externalNativeBuild/
+captures/
+.navigation/
+*.hprof
+
+# ── Gradle ──
+.gradle/
+
+# ── 本地配置与 IDE ──
+local.properties
+/.idea/
+*.iml
+.DS_Store
+.kotlin/
+
+# ── AI 编程助手目录（与工程无关，不入库）──
+.claude/
+.workbuddy/
+.codebuddy/
+
+# ── 打包签名：keystore 与口令泄露即意味着应用可被冒充，务必离线备份 ──
+/keystore.properties
+/app/keystore.properties
+*.jks
+*.keystore
+
+# ── 模型资产：总量约 4GB，不入库 ──
+# 从项目网盘下载模型后，按 app/src/main/assets/README.md 放回对应目录即可编译运行。
+/app/src/main/assets/**
+!/app/src/main/assets/README.md
+
+# ── 调试 / 性能分析产物 ──
+onnxruntime_profile__*.json

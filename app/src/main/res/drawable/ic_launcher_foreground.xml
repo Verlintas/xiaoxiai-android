@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 离线AI宝 启动图标前景：白色对话气泡（3 圆点镂空透出背景渐变）+ 右上 AI 四角星闪光。
+     坐标在 108×108 视口的安全区（中心 54,54）内，圆形/圆角等遮罩均不裁切主体。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 对话气泡：圆角矩形(33,42)-(71,70) + 左下尾巴；3 个圆点用 evenOdd 镂空 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M45,42 H59 a12,12 0 0 1 12,12 V58 a12,12 0 0 1 -12,12 H49 L40,79 L45,70 a12,12 0 0 1 -12,-12 V54 a12,12 0 0 1 12,-12 Z M41.4,56 a2.6,2.6 0 1 0 5.2,0 a2.6,2.6 0 1 0 -5.2,0 Z M49.4,56 a2.6,2.6 0 1 0 5.2,0 a2.6,2.6 0 1 0 -5.2,0 Z M57.4,56 a2.6,2.6 0 1 0 5.2,0 a2.6,2.6 0 1 0 -5.2,0 Z" />
+    <!-- AI 闪光：右上四角星（中心 79,34，外径 9，内径 3） -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M79,25 L81.12,31.88 L88,34 L81.12,36.12 L79,43 L76.88,36.12 L70,34 L76.88,31.88 Z" />
+</vector>
