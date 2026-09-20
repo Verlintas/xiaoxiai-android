@@ -106,13 +106,19 @@ app/src/main/java/com/example/xiaoxiai/
 └── ...                    VAD、音频 IO、分词器、文档解析等
 ```
 
-## 五、开源协议
+## 五、Star History
+
+
+## 六、开源协议
 
 本项目代码采用 [Apache License 2.0](LICENSE) 授权，可自由使用、修改与二次分发（需保留协议声明与署名）。
 
 > 提醒：若要上架应用市场，应用内的第三方模型与依赖（ONNX Runtime、PyTorch Mobile、OpenCV 等）
 > 各自遵循其上游许可，请一并遵守；国内上架还需自备软件著作权、App 备案与隐私政策等材料。
 
-## Star历史
+## 六、Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=chenking2020/xiaoxiai-android&type=Date)](https://star-history.com/#chenking2020/xiaoxiai-android&Date)
+如果这个项目对你有帮助，欢迎点个 Star ⭐
+
+[![Star History Chart](https://api.star-history.com/svg?repos=chenking2020/xiaoxiai-android&type=Date)](https://www.star-history.com/#chenking2020/xiaoxiai-android&Date)
+
