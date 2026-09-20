@@ -3,7 +3,8 @@
 本目录下的模型文件**不在 Git 仓库中**（总量约 4GB，已在 `.gitignore` 排除）。
 请从项目发布的网盘下载模型包，解压后按下面的目录结构放回，再编译运行。
 
-<!-- TODO: 在这里填上你的网盘下载地址与提取码 -->
+**下载地址**：https://pan.baidu.com/s/1o01wK3txnsmkr9UJQuaCAQ
+**提取码**：`aqp5`
 
 ```
 app/src/main/assets/

@@ -24,6 +24,9 @@
 
 模型文件**不在仓库里**（总量约 4GB）。请先从网盘下载模型包，解压到 `app/src/main/assets/` 下：
 
+- 链接：https://pan.baidu.com/s/1o01wK3txnsmkr9UJQuaCAQ
+- 提取码：`aqp5`
+
 ```
 asr/    语音识别    mt/     机器翻译    llm/    端侧大模型
 tts/    语音合成    ocr/    文字识别    vad/    语音端点检测
@@ -31,8 +34,6 @@ tts/    语音合成    ocr/    文字识别    vad/    语音端点检测
 
 目录结构与注意事项见 [`app/src/main/assets/README.md`](app/src/main/assets/README.md)。
 没有模型也能编译安装，只是对应能力不可用。
-
-<!-- TODO: 在 assets/README.md 中填写网盘下载地址 -->
 
 ## 二、编译运行
 
@@ -63,9 +64,7 @@ app/src/main/java/com/example/xiaoxiai/
 
 ## 四、开源协议
 
-<!-- TODO: 确定协议后在此说明，并在仓库根目录放置 LICENSE（推荐 Apache-2.0） -->
-
-协议待定。在此之前，代码默认不可用于二次分发。
+本项目代码采用 [Apache License 2.0](LICENSE) 授权，可自由使用、修改与二次分发（需保留协议声明与署名）。
 
 > 提醒：若要上架应用市场，应用内的第三方模型与依赖（ONNX Runtime、PyTorch Mobile、OpenCV 等）
 > 各自遵循其上游许可，请一并遵守；国内上架还需自备软件著作权、App 备案与隐私政策等材料。
