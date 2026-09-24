@@ -108,11 +108,20 @@ class LlmEngine private constructor(private val context: Context) {
         enableThinking: Boolean,
         isCancelled: () -> Boolean,
         onPartial: ((String) -> Unit)?
-    ): String {
-        // Qwen 聊天模板（chat_template.jinja 简化后的单轮形态；special token 处 BPE 天然断开，
-        // 分段编码再拼接与整串编码等价）。
-        // ⚠️ 输入长度护栏：KV cache FLOAT32 约 229KB/token（28 层 × 8 头 × 128 维 × K/V），上限同时
-        // 约束原生内存；超限截断 user 内容（调用方应优先走 [summarizeLong] 分层总结而非截断）。
+    ): String = runDecode(
+        tok, sess, buildSingleTurnSeq(tok, system, user, enableThinking),
+        maxNew, isCancelled, null, onPartial
+    )
+
+    /**
+     * 单轮 prompt：[system][user] 两段 + assistant 开头（含思考开关）。
+     *
+     * ⚠️ 输入长度护栏：KV cache FLOAT32 约 229KB/token（28 层 × 8 头 × 128 维 × K/V），上限同时
+     * 约束原生内存；超限截断 user 内容（调用方应优先走 [summarizeLong] 分层总结而非截断）。
+     */
+    private fun buildSingleTurnSeq(
+        tok: HfBpeTokenizer, system: String, user: String, enableThinking: Boolean
+    ): List<Long> {
         val seq = ArrayList<Long>(256)
         fun addText(t: String) = tok.encode(t).forEach { seq.add(it.toLong()) }
         fun addSpecial(id: Int) = seq.add(id.toLong())
@@ -131,6 +140,15 @@ class LlmEngine private constructor(private val context: Context) {
             addText(userText)
         }
         addSpecial(tok.imEndId); addText("\n")
+        return appendAssistantHead(seq, tok, enableThinking)
+    }
+
+    /** 补上 assistant 段头（含关闭思考时的空思考块），返回同一 seq。 */
+    private fun appendAssistantHead(
+        seq: ArrayList<Long>, tok: HfBpeTokenizer, enableThinking: Boolean
+    ): ArrayList<Long> {
+        fun addText(t: String) = tok.encode(t).forEach { seq.add(it.toLong()) }
+        fun addSpecial(id: Int) = seq.add(id.toLong())
         addSpecial(tok.imStartId); addText("assistant\n")
         if (!enableThinking && tok.thinkStartId != 0 && tok.thinkEndId != 0) {
             // Qwen3 关闭思考的**硬开关**（等价于 API 侧 enable_thinking=False）：官方 chat_template
@@ -142,7 +160,22 @@ class LlmEngine private constructor(private val context: Context) {
             addSpecial(tok.thinkStartId); addText("\n\n")
             addSpecial(tok.thinkEndId); addText("\n\n")
         }
+        return seq
+    }
 
+    /**
+     * prefill（[PREFILL_STEP] 分步）+ 逐 token decode，共用给单轮 [generate] 与多轮 [chat]。
+     *
+     * @param onThink 深度思考模式下**思考过程**的增量回调（完整思考文本，会重复下发整段；
+     *                思考块闭合后停止回调）。不思考模式恒不回调。
+     */
+    private fun runDecode(
+        tok: HfBpeTokenizer, sess: OrtSession,
+        seq: List<Long>, maxNew: Int,
+        isCancelled: () -> Boolean,
+        onThink: ((String) -> Unit)?,
+        onPartial: ((String) -> Unit)?
+    ): String {
         val eosIds = intArrayOf(tok.imEndId, 151643)   // <|im_end|> / <|endoftext|>
         val generated = ArrayList<Int>()
         var prevResult: OrtSession.Result? = null
@@ -168,6 +201,7 @@ class LlmEngine private constructor(private val context: Context) {
             // ── decode：每步 1 token（首个 token 直接用 prefill 最后一段的 logits）
             var nextInput: List<Long> = emptyList()
             var posStart = seq.size.toLong()
+            var thinkClosed = false
             while (generated.size < maxNew) {
                 if (isCancelled()) break   // 协作式取消：正在跑的单次推理完成后立即停
                 if (nextInput.isNotEmpty()) {
@@ -183,6 +217,11 @@ class LlmEngine private constructor(private val context: Context) {
                 val nextId = argmax(lg)
                 if (nextId in eosIds) break
                 generated.add(nextId)
+                if (onThink != null && !thinkClosed) {
+                    // 思考块闭合后不再回调（正文阶段不该再刷思考区）
+                    thinkText(tok, generated)?.let { runCatching { onThink(it) } }
+                    if (generated.contains(tok.thinkEndId)) thinkClosed = true
+                }
                 if (onPartial != null) {
                     runCatching {
                         onPartial(stripThink(tok.decode(
@@ -196,6 +235,22 @@ class LlmEngine private constructor(private val context: Context) {
             prevResult?.close()
         }
         return stripThink(tok.decode(stripThinkTokens(generated, tok.thinkStartId, tok.thinkEndId))).trim()
+    }
+
+    /**
+     * 生成过程中的思考内容（id 层取，[HfBpeTokenizer.decode] 会跳过 `<think>` 这类 added token，
+     * 文本层找不到边界）：未出现 `<think>` 返回 null；已闭合返回完整思考；未闭合返回当前已生成部分。
+     */
+    private fun thinkText(tok: HfBpeTokenizer, ids: List<Int>): String? {
+        val s = tok.thinkStartId
+        val e = tok.thinkEndId
+        if (s == 0 || e == 0) return null
+        val ts = ids.indexOf(s)
+        if (ts < 0) return null
+        val te = ids.indexOf(e)
+        val end = if (te >= 0) te else ids.size
+        if (end <= ts + 1) return null
+        return tok.decode(ids.subList(ts + 1, end)).trim()
     }
 
     /** 单次 sess.run：输入 [stepTokens]（带上 [past] KV），返回该步 logits（可选）与新 KV。
@@ -242,6 +297,92 @@ class LlmEngine private constructor(private val context: Context) {
                 (result.get("present.$it.value").get() as OnnxTensor)
         }
         return StepResult(logits, newPast, result)
+    }
+
+    /**
+     * **多轮对话**生成（文本对话 / 语音通话智能体的底座）。
+     *
+     * 与 [generate] 的区别只在 prompt 组装：这里把完整对话历史按 Qwen 模板逐轮展开
+     * （system + user/assistant 交替 + 待生成的 assistant），让模型看得到上文；
+     * 推理路径（分步 prefill + 贪心 decode + 重复惩罚）完全复用。
+     *
+     * ⚠️ 上下文预算仍是 [MAX_PROMPT_TOKENS]：超预算时**从最旧的对话轮次开始丢弃**
+     * （system 与最后一轮 user 恒保留，保证"人设"和"当前问题"不丢）；
+     * 最后一轮自身超预算时截断其中部。端上 0.6B 的可用上下文本就有限，
+     * 上层应只保留最近若干轮（见 TextChatAgent 的 [CHAT_HISTORY_TURNS]）。
+     *
+     * @param messages 完整对话序列：首条建议为 system，其余 user/assistant 交替，以 user 结尾。
+     * @param onThink  深度思考模式下的思考过程回调（思考块闭合后停止）；不思考模式恒不回调。
+     */
+    suspend fun chat(
+        messages: List<ChatTurn>,
+        maxNew: Int = 512,
+        enableThinking: Boolean = false,
+        onThink: ((String) -> Unit)? = null,
+        onPartial: ((String) -> Unit)? = null
+    ): String = withContext(Dispatchers.Default) {
+        val tok = tokenizer ?: return@withContext ""
+        val sess = session ?: return@withContext ""
+        inferMutex.withLock {
+            runCatching {
+                runDecode(
+                    tok, sess, buildChatSeq(tok, messages, enableThinking),
+                    maxNew, { !isActive }, onThink, onPartial
+                )
+            }.getOrElse { e ->
+                Log.e(TAG, "LLM chat failed", e)
+                if (e is OutOfMemoryError) {
+                    throw RuntimeException(
+                        "内存不足：对话上下文过长，请新建会话或缩短输入后再试", e
+                    )
+                }
+                ""
+            }
+        }
+    }
+
+    /** 组装多轮 prompt：尾部优先保留，超预算丢最旧的轮次。 */
+    private fun buildChatSeq(
+        tok: HfBpeTokenizer, messages: List<ChatTurn>, enableThinking: Boolean
+    ): List<Long> {
+        val system = messages.firstOrNull { it.role == ROLE_SYSTEM }?.content.orEmpty()
+        val turns = messages.filter { it.role != ROLE_SYSTEM && it.content.isNotBlank() }
+
+        val head = ArrayList<Long>()
+        fun addText(seq: MutableList<Long>, t: String) = tok.encode(t).forEach { seq.add(it.toLong()) }
+        addText(head, "system\n"); addText(head, system)
+
+        val budget = MAX_PROMPT_TOKENS - 8 - (if (enableThinking) 0 else 4)
+        val kept = ArrayList<ChatTurn>()
+        var used = head.size + 8      // system 段头/段尾 + assistant 段头 的固定开销
+        for (i in turns.lastIndex downTo 0) {
+            val t = turns[i]
+            val ids = tok.encode(stripThinkSwitch(t.content))
+            if (used + ids.size + 4 > budget) {
+                // 连最后一轮都装不下：截断保留（至少有问题的一部分，不至于空 prompt）
+                if (kept.isEmpty()) {
+                    val room = (budget - used - 8).coerceAtLeast(64)
+                    kept.add(ChatTurn(t.role,
+                        tok.decode(ids.take(room)) + "\n（后文过长已截断）"))
+                }
+                break
+            }
+            used += ids.size + 4
+            kept.add(0, t)
+        }
+        if (kept.size < turns.size) {
+            Log.w(TAG, "chat history trimmed: ${turns.size} -> ${kept.size} turns (cap $MAX_PROMPT_TOKENS)")
+        }
+
+        val seq = ArrayList<Long>(256)
+        seq.add(tok.imStartId.toLong()); seq.addAll(head)
+        seq.add(tok.imEndId.toLong()); addText(seq, "\n")
+        for (t in kept) {
+            seq.add(tok.imStartId.toLong()); addText(seq, "${t.role}\n")
+            addText(seq, stripThinkSwitch(t.content))
+            seq.add(tok.imEndId.toLong()); addText(seq, "\n")
+        }
+        return appendAssistantHead(seq, tok, enableThinking)
     }
 
     /**
@@ -600,6 +741,20 @@ class LlmEngine private constructor(private val context: Context) {
             }
     }
 }
+
+/** [LlmEngine.chat] 的对话角色常量（Qwen 模板的 im_start 角色名）。 */
+internal const val ROLE_SYSTEM = "system"
+internal const val ROLE_USER = "user"
+internal const val ROLE_ASSISTANT = "assistant"
+
+/**
+ * 多轮对话的一轮。
+ *
+ * @param role [ROLE_SYSTEM] / [ROLE_USER] / [ROLE_ASSISTANT]
+ * @param content 该轮文本。assistant 的历史轮次应存**已剥离思考块**的正文
+ *   （[LlmEngine.chat] 返回的就是正文），否则思考内容会混进上文、把后续轮次带偏。
+ */
+data class ChatTurn(val role: String, val content: String)
 
 /**
  * 在 **token id 层面** 剥离 Qwen3 思考块。

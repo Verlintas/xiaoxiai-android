@@ -41,6 +41,9 @@ internal object TextExtractor {
 
     /** 默认最多摘录句数。 */
     internal const val DEFAULT_MAX_SENTENCES = 14
+
+    /** 文档问答的检索句数上限：端上 prompt 只有 ~1k token，塞太多句反而稀释问题。 */
+    internal const val DEFAULT_RETRIEVE_SENTENCES = 10
     /**
      * 配额阶段判定「与已选句重复」的 bigram Jaccard 阈值。
      * 刻意取很高（0.85 ≈ 几乎逐字重复）：配额的目的是**覆盖**，口语转录里大量句子句式相近
@@ -71,6 +74,49 @@ internal object TextExtractor {
         val scored = score(sents)
         val picked = select(scored, maxSentences)
         return fitBudget(picked, tokenBudget, tokenCounter)
+    }
+
+    /**
+     * 面向**文档问答**的检索式选句：只按「与问题的字面重合度」取 top-N。
+     *
+     * 与 [extract] 的分歧点：[extract] 走分位配额（头/中/尾各取一句）→ 适合"总结"这种要覆盖
+     * 全文的任务；问答要的是**相关性**，配额会把与问题无关的头尾句硬塞进 prompt，反而稀释答案、
+     * 让 0.6B 小模型跑题。这里纯按重合度排序取 top-N，再按原文顺序输出（读起来仍连贯）。
+     *
+     * 重合度两路相加：bigram Jaccard（词组级）+ 字符命中率（兜底短问句，如"多少钱"——
+     * 其 bigram 在原文里可能一个都组不上）。
+     */
+    internal fun retrieve(
+        text: String,
+        query: String,
+        tokenBudget: Int,
+        tokenCounter: (String) -> Int = { it.length },
+        maxSentences: Int = DEFAULT_RETRIEVE_SENTENCES
+    ): List<String> {
+        val sents = splitSentences(text)
+        if (sents.isEmpty()) return emptyList()
+        // 空问题 / 无可用 bigram：退回覆盖式抽取（至少要给模型一段有代表性的内容）
+        val qb = bigrams(query)
+        val qChars = query.toSet().filter { it !in STOP_CHARS && !it.isWhitespace() }
+        if (query.isBlank() || (qb.isEmpty() && qChars.isEmpty())) {
+            return extract(text, tokenBudget, tokenCounter, maxSentences)
+        }
+
+        val ranked = sents.mapIndexed { i, s ->
+            val sb = bigrams(s)
+            val overlap = if (sb.isEmpty()) 0.0 else jaccard(sb, qb)
+            val charHit = qChars.count { it in s }.toDouble() / qChars.size
+            Candidate(s, i, overlap * 10.0 + charHit)
+        }
+        val hit = ranked.filter { it.score > 0.0 }
+            .sortedByDescending { it.score }
+            .take(maxSentences)
+            .sortedBy { it.index }
+        // 一句都没命中（问法与原文用词完全不同）：仍取最相关的若干句，别让 prompt 空着
+        val kept = if (hit.isEmpty())
+            ranked.sortedByDescending { it.score }.take(maxSentences).sortedBy { it.index }
+        else hit
+        return fitBudget(kept, tokenBudget, tokenCounter)
     }
 
     /** 切句：按标点/换行切，去掉空白与过短碎片。 */

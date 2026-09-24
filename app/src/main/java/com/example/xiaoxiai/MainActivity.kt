@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -74,6 +75,8 @@ class MainActivity : ComponentActivity() {
 // ── 导航路由 ──
 sealed class Screen(val route: String) {
     object Main : Screen("main")
+    object TextChat : Screen("textChat")
+    object VoiceCall : Screen("voiceCall")
     object ScanAgent : Screen("scanAgent")
     object DocTrans : Screen("docTrans")
     object SpeechMT : Screen("speechMT")
@@ -89,12 +92,34 @@ private val BrandEnd = Color(0xFF8B5CF6)     // 紫
 private val Orange = Color(0xFFEA580C)       // 录音翻译 · 橙
 private val Cyan = Color(0xFF0284C7)         // 视频字幕 · 天蓝
 private val Green = Color(0xFF059669)        // 实时听音 · 翠绿
+private val Blue = Color(0xFF2563EB)         // 文本对话 · 宝蓝
+private val Rose = Color(0xFFE11D48)         // 语音通话 · 玫红
 
 // ── 功能列表 ──
-// 上线中：录音翻译 / 本地视频字幕 两个智能体可进入功能页使用；
-// 其余四个（跨语沟通 / 实时听音 / 全能扫描 / 文档识别翻译）在首页展示但标记“待上线”，
-// isComingSoon = true 时卡片禁用点击；Screen 路由、页面代码全部保留，恢复时去掉该标记即可。
+// 八个智能体全部可进入功能页使用。列表顺序即首页展示顺序：
+// 文本对话 / 语音通话 两个通用对话入口置顶，其后为录音翻译、本地视频字幕、跨语沟通、
+// 实时视频听音（Beta，效率仍在优化）、全能扫描、文档识别翻译。
+// isComingSoon = true 时卡片禁用点击（当前无待上线项；后续下线某个智能体时加该标记即可，
+// 路由与页面代码保留）。
 private val functionItems = listOf(
+    FunctionItem(
+        id = 6,
+        title = "文本对话智能体",
+        description = "用文字直接提问，支持深度思考与不思考两种模式，可上传文档针对内容问答。",
+        icon = Icons.AutoMirrored.Filled.Chat,
+        accent = Blue,
+        route = Screen.TextChat.route,
+        tag = "文本 · 问答 · 深度思考"
+    ),
+    FunctionItem(
+        id = 7,
+        title = "语音通话智能体",
+        description = "像打电话一样纯语音交互：说完停顿即可，回答直接以语音播出。",
+        icon = Icons.Default.Call,
+        accent = Rose,
+        route = Screen.VoiceCall.route,
+        tag = "通话 · 语音 · 实时"
+    ),
     FunctionItem(
         id = 2,
         title = "录音翻译智能体",
@@ -130,7 +155,7 @@ private val functionItems = listOf(
         accent = Green,
         route = Screen.ListenSubtitle.route,
         tag = "视频 · 实时 · 悬浮",
-        isComingSoon = true
+        isBeta = true
     ),
     FunctionItem(
         id = 0,
@@ -139,8 +164,7 @@ private val functionItems = listOf(
         icon = Icons.Default.DocumentScanner,
         accent = Color(0xFF4F46E5),
         route = Screen.ScanAgent.route,
-        tag = "全能 · 扫描 · 高清",
-        isComingSoon = true
+        tag = "全能 · 扫描 · 高清"
     ),
     FunctionItem(
         id = 1,
@@ -149,8 +173,7 @@ private val functionItems = listOf(
         icon = Icons.Default.Description,
         accent = Color(0xFF7C3AED),
         route = Screen.DocTrans.route,
-        tag = "文档 · OCR · 翻译",
-        isComingSoon = true
+        tag = "文档 · OCR · 翻译"
     )
 )
 
@@ -168,6 +191,12 @@ fun MainApp() {
                 onFunctionClick = { route -> navController.navigate(route) },
                 onSettingsClick = { navController.navigate(Screen.Settings.route) }
             )
+        }
+        composable(Screen.TextChat.route) {
+            TextChatScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Screen.VoiceCall.route) {
+            VoiceCallScreen(onBack = { navController.popBackStack() })
         }
         composable(Screen.ScanAgent.route) {
             ScanAgentScreen(onBack = { navController.popBackStack() })
@@ -400,7 +429,7 @@ private fun StatsRow(modifier: Modifier = Modifier) {
         StatCard(
             modifier = Modifier.weight(1f),
             icon = Icons.Default.AutoAwesome,
-            value = "6",
+            value = "8",
             label = "智能体",
             tint = Orange
         )

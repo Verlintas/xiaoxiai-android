@@ -41,6 +41,8 @@ internal val AgentPurple = Color(0xFF4F46E5)   // 扫描智能体 · 靛蓝
 internal val AgentOrange = Color(0xFFEA580C)    // 录音翻译智能体 · 橙
 internal val AgentCyan = Color(0xFF0284C7)      // 视频字幕智能体 · 天蓝
 internal val AgentGreen = Color(0xFF059669)     // 实时听音智能体 · 翠绿
+internal val AgentBlue = Color(0xFF2563EB)      // 文本对话智能体 · 宝蓝
+internal val AgentRose = Color(0xFFE11D48)      // 语音通话智能体 · 玫红
 
 /**
  * 二级页面统一的渐变 Hero 头部：主题色渐变背景 + 返回按钮 + 图标 + 标题 + 副标题。

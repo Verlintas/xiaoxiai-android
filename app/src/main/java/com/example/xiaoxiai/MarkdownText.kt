@@ -58,39 +58,58 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.bodyMedium
                 )
 
-                is MdBlock.Bullet -> block.items.forEach { item ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("•", style = MaterialTheme.typography.bodyMedium, color = accent)
-                        Text(
-                            text = buildInline(item, codeBg, codeText, linkColor),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
-                        )
+                // 列表项之间的间距要比块间距小，否则条目看着像散落的段落
+                is MdBlock.Bullet -> Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    block.items.forEach { item ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("•", style = MaterialTheme.typography.bodyMedium, color = accent)
+                            Text(
+                                text = buildInline(item, codeBg, codeText, linkColor),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
 
-                is MdBlock.Ordered -> block.items.forEachIndexed { idx, item ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("${idx + 1}.", style = MaterialTheme.typography.bodyMedium, color = accent, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            text = buildInline(item, codeBg, codeText, linkColor),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
-                        )
+                is MdBlock.Ordered -> Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    block.items.forEachIndexed { idx, item ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("${idx + 1}.", style = MaterialTheme.typography.bodyMedium, color = accent, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = buildInline(item, codeBg, codeText, linkColor),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
 
-                is MdBlock.Code -> Text(
-                    text = block.content,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
+                is MdBlock.Code -> Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(codeBg)
-                        .horizontalScroll(rememberScrollState())
-                        .padding(10.dp)
-                )
+                        .padding(vertical = 8.dp)
+                ) {
+                    if (block.lang.isNotEmpty()) {
+                        Text(
+                            block.lang.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 10.dp, bottom = 4.dp)
+                        )
+                    }
+                    Text(
+                        text = block.content,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 10.dp)
+                    )
+                }
 
                 is MdBlock.Quote -> Row(
                     modifier = Modifier
@@ -144,7 +163,7 @@ private sealed class MdBlock {
     data class Paragraph(val text: String) : MdBlock()
     data class Bullet(val items: List<String>) : MdBlock()
     data class Ordered(val items: List<String>) : MdBlock()
-    data class Code(val content: String) : MdBlock()
+    data class Code(val content: String, val lang: String = "") : MdBlock()
     data class Quote(val text: String) : MdBlock()
     data class Table(val rows: List<List<String>>) : MdBlock()
     object Rule : MdBlock()
@@ -168,13 +187,21 @@ private fun parseBlocks(md: String): List<MdBlock> {
         val t = line.trim()
         if (t.isEmpty()) { i++; continue }
 
-        // 代码块
+        // 代码块。流式输出时收尾的 ``` 可能还没到，这里把剩余内容整段按代码块渲染，
+        // 而不是退化成纯文本——否则整个生成过程都会露出 ``` 源码。
         if (t.startsWith("```")) {
+            val lang = t.removePrefix("```").trim().takeWhile { !it.isWhitespace() }
             val sb = StringBuilder()
             i++
             while (i < lines.size && !lines[i].trim().startsWith("```")) { sb.append(lines[i]).append('\n'); i++ }
             i++ // 跳过收尾 ```
-            out.add(MdBlock.Code(sb.toString().trimEnd('\n')))
+            var content = sb.toString().trimEnd('\n')
+            // ```kotlin 的语言标记不属于代码内容，首行正好是它时去掉
+            if (lang.isNotEmpty() && content.lineSequence().firstOrNull()?.trim().equals(lang, true)) {
+                val nl = content.indexOf('\n')
+                content = if (nl >= 0) content.substring(nl + 1) else ""
+            }
+            out.add(MdBlock.Code(content, lang))
             continue
         }
         // 标题
@@ -257,7 +284,10 @@ private fun buildInline(text: String, codeBg: Color, codeText: Color, linkColor:
                 g[4].isNotEmpty() -> { pushStyle(SpanStyle(fontStyle = FontStyle.Italic)); append(g[4]); pop() }
                 g[5].isNotEmpty() -> { pushStyle(SpanStyle(background = codeBg, color = codeText, fontFamily = FontFamily.Monospace)); append(g[5]); pop() }
                 g[6].isNotEmpty() -> { pushStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)); append(g[6]); pop() }
-                g[7].isNotEmpty() -> { pushStyle(SpanStyle(color = linkColor)); append(g[7]); pop() }
+                g[7].isNotEmpty() -> {
+                    pushStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline))
+                    append(g[7]); pop()
+                }
             }
             idx = m.range.last + 1
         }

@@ -57,6 +57,9 @@ class TtsEngine private constructor(private val context: Context) {
     private var manifest: JSONObject? = null
 
     val isLoaded: Boolean get() = warmed && prefill != null && codecDecode != null && codecEncode != null
+    /** 内置音色合成（[synthesize]）的就绪条件：不需要 codecEncode（参考帧已预编码）。 */
+    val canSpeak: Boolean get() = warmed && prefill != null && decodeStep != null &&
+        frameGraph != null && codecDecode != null && manifest != null
 
     /**
      * 异步加载（幂等）。模型目录较大（~780MB），打不进 APK（assets 总量会超 Zip32 4GB 上限），
@@ -139,6 +142,59 @@ class TtsEngine private constructor(private val context: Context) {
                 Log.e(TAG, "synthesize failed", it)
                 null
             }
+        }
+    }
+
+    /** 内置音色：manifest 里预编码好的音色提示帧（[voiceIndex] 对应 [builtinVoices] 下标）。 */
+    data class BuiltinVoice(val name: String, val displayName: String, val group: String)
+
+    /** 内置音色列表（18 个：中/英/日男女声）。TTS 未加载时返回空。 */
+    fun builtinVoices(): List<BuiltinVoice> {
+        val mf = manifest ?: return emptyList()
+        return runCatching {
+            val arr = mf.getJSONArray("builtin_voices")
+            List(arr.length()) { i ->
+                val o = arr.getJSONObject(i)
+                val name = o.optString("voice", "voice$i")
+                BuiltinVoice(name, o.optString("display_name", name), o.optString("group", ""))
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /**
+     * 文本 → 语音（**内置音色**，无需用户录音）。
+     *
+     * 与 [synthesizeCloned] 只有音色参考帧的来源不同：这里直接取 manifest 中
+     * [builtinVoices] 第 [voiceIndex] 个预编码的 `prompt_audio_codes`（已是 [frames][16] 的
+     * 音频码，与 codec encode 输出同格式），省掉「录音 → 升采样 → encode」一整条链路，
+     * 因此不依赖 codecEncode，首句延迟也更低。
+     */
+    suspend fun synthesize(
+        text: String,
+        voiceIndex: Int = 0,
+        maxFrames: Int = DEFAULT_MAX_FRAMES,
+        onFrame: ((Int) -> Unit)? = null
+    ): TtsAudio? = withContext(Dispatchers.Default) {
+        if (!canSpeak || text.isBlank()) return@withContext null
+        val mf = manifest ?: return@withContext null
+        val refCodes = builtinRefCodes(mf, voiceIndex) ?: return@withContext null
+        inferMutex.withLock {
+            runCatching { runSynthesis(mf, text, refCodes, maxFrames, onFrame) }
+                .getOrElse { Log.e(TAG, "synthesize failed", it); null }
+        }
+    }
+
+    /** 取内置音色的参考码帧 [frames][16]（长度不足 16 列的帧按 0 补，避免越界）。 */
+    private fun builtinRefCodes(mf: JSONObject, voiceIndex: Int): Array<IntArray>? {
+        val arr = mf.optJSONArray("builtin_voices") ?: return null
+        if (arr.length() == 0) return null
+        val v = arr.getJSONObject(voiceIndex.coerceIn(0, arr.length() - 1))
+        val codes = v.optJSONArray("prompt_audio_codes") ?: return null
+        val frames = codes.length()
+        if (frames <= 0) return null
+        return Array(frames) { f ->
+            val row = codes.optJSONArray(f) ?: return Array(0) { IntArray(0) }
+            IntArray(N_VQ) { c -> row.optInt(c, 0) }
         }
     }
 
@@ -387,6 +443,10 @@ class TtsEngine private constructor(private val context: Context) {
         private const val TAG = "TtsEngine"
         private const val N_LAYERS = 12
         private const val HIDDEN = 768
+        /** 音频码本数（tts_config.n_vq），内置音色码帧每行长度。 */
+        private const val N_VQ = 16
+        /** 默认生成帧上限：12.5 帧/秒 → 375 帧 ≈ 30s 语音。 */
+        private const val DEFAULT_MAX_FRAMES = 375
 
         @Volatile private var instance: TtsEngine? = null
         fun get(context: Context): TtsEngine =

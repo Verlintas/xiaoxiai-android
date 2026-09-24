@@ -7,6 +7,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
+import android.media.AudioTrack
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.media.MediaCodec
@@ -19,6 +20,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
@@ -832,5 +834,106 @@ class PlaybackCaptureRecorder(
     companion object {
         private const val TAG = "PlaybackCaptureRecorder"
         private const val ABSOLUTE_VOICE_RMS = 0.012f
+    }
+}
+
+/**
+ * Float32 PCM 播放器（AudioTrack 流式），用于把 TTS 合成的波形直接放出来。
+ *
+ * 为什么不用 MediaPlayer：TTS 产物是**内存里的 FloatArray**（48k 立体声），没有落盘文件；
+ * 走 MediaPlayer 要先写 WAV 再播，白白多一次 I/O 与首字延迟，通话场景里这一段延迟是能被听出来的。
+ *
+ * 停止语义：AudioTrack.write 会在缓冲满时阻塞，协程取消无法通过 finally 打断它，
+ * 所以 [stop] 从外部直接调 `AudioTrack.stop()` —— 被打断的 write 会立即返回（≤0），
+ * 循环随即退出，配合 [stopped] 标志避免竞态下继续写。
+ */
+class PcmPlayer {
+
+    /** AudioTrack 缓冲上限（1MB ≈ 5.4s 的 48k 立体声）：再大申请不到共享内存。 */
+    private val maxTrackBytes = 1 shl 20
+
+    @Volatile private var stopped = false
+    private var track: AudioTrack? = null
+
+    /** 当前是否正在播放。 */
+    val playing: Boolean get() = track != null && !stopped
+
+    /**
+     * 播放交错 Float32 PCM（[-1,1]），阻塞到播完或被 [stop]。
+     *
+     * @param pcm 交错样本（L,R,L,R…）；单声道时 [channels] 传 1
+     * @param onProgress 播放进度回调（0..1），可用于驱动 UI 的声波动画
+     */
+    suspend fun play(
+        pcm: FloatArray,
+        sampleRate: Int = 48_000,
+        channels: Int = 2,
+        onProgress: ((Float) -> Unit)? = null
+    ) = withContext(Dispatchers.IO) {
+        if (pcm.isEmpty()) return@withContext
+        stopped = false
+        val minBuf = AudioTrack.getMinBufferSize(
+            sampleRate,
+            if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO,
+            AudioFormat.ENCODING_PCM_FLOAT
+        )
+        val t = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(
+                        if (channels == 1) AudioFormat.CHANNEL_OUT_MONO
+                        else AudioFormat.CHANNEL_OUT_STEREO
+                    )
+                    .build()
+            )
+            // 缓冲按整段 PCM 大小申请可避免 write 频繁阻塞，但要设上限：一整句 20s 48k 立体声
+            // ≈7.7MB，AudioTrack 申请超大共享内存会初始化失败
+            .setBufferSizeInBytes(max(minBuf, min(pcm.size * 4, maxTrackBytes)))
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+        track = t
+        try {
+            t.play()
+            // 每次只写 ~200ms：既能及时响应 stop()，也不会因写入过小而频繁系统调用
+            val chunk = (sampleRate / 5) * channels
+            var off = 0
+            while (off < pcm.size && !stopped) {
+                val n = minOf(chunk, pcm.size - off)
+                val w = t.write(pcm, off, n, AudioTrack.WRITE_BLOCKING)
+                if (w <= 0) break
+                off += w
+                onProgress?.invoke(off.toFloat() / pcm.size)
+            }
+            // 排空：write 返回后缓冲里还有数据，等播放头追上再结束（否则尾音被切）
+            val tailMs = ((pcm.size / channels - t.playbackHeadPosition) * 1000L / sampleRate) + 120L
+            val deadline = System.currentTimeMillis() + tailMs
+            while (!stopped && System.currentTimeMillis() < deadline) {
+                delay(60)
+            }
+        } finally {
+            runCatching { t.stop() }
+            runCatching { t.release() }
+            track = null
+        }
+    }
+
+    /** 中断播放（线程安全，可从任意协程调用）。 */
+    fun stop() {
+        stopped = true
+        runCatching { track?.stop() }
+    }
+
+    fun release() {
+        stop()
+        runCatching { track?.release() }
+        track = null
     }
 }
